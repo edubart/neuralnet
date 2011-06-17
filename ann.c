@@ -42,8 +42,8 @@ inline void synapse_init(ANNSynapse *synapse, ANNNeuron *input_neuron, ANNNeuron
     synapse->weight_delta = 0;
 }
 
-inline void neuron_init(ANNNeuron *neuron, ANNLayer *layer) {
-    neuron->layer = layer;
+inline void neuron_init(ANNNeuron *neuron, ANNLayer *layer)
+{
     neuron->delta = 0;
     neuron->bias = 0;
     neuron->bias_delta = 0;
@@ -65,6 +65,7 @@ inline void layer_link(ANNLayer *input_layer, ANNLayer *output_layer)
     input_layer->next_layer = output_layer;
     output_layer->prev_layer = input_layer;
 
+    /* connect layers neurons */
     for(i=0;i<input_neurons_count;++i) {
         input_neuron = input_layer->neurons[i];
         input_neuron->output_synapses_count = output_neurons_count;
@@ -94,11 +95,12 @@ inline void layer_init(ANNLayer *layer, int neurons_count, ANNLayer *prev_layer)
     layer->prev_layer = NULL;
     layer->neurons_count = neurons_count;
     layer->steepness = 1.0;
-    layer->learning_rate = 0.2;
-    layer->momentum = 0.1;
+    layer->learning_rate = 0.7;
+    layer->momentum = 0;
     layer->activate_func = ANN_SIGMOID_SYMMETRIC;
     layer->neurons = malloc(neurons_count * sizeof(ANNNeuron *));
 
+    /* initiaze layer neurons */
     for(i=0;i<neurons_count;++i) {
         layer->neurons[i] = malloc(sizeof(ANNNeuron));
         neuron_init(layer->neurons[i], layer);
@@ -107,22 +109,9 @@ inline void layer_init(ANNLayer *layer, int neurons_count, ANNLayer *prev_layer)
             layer->neurons[i]->bias = ann_random_range(-0.1, 0.1);
     }
 
+    /* link with the previous layer */
     if(prev_layer)
         layer_link(prev_layer, layer);
-}
-
-inline void layer_set_values(ANNLayer *layer, annreal *input)
-{
-    int i;
-    for(i=0;i<layer->neurons_count;i++)
-        layer->neurons[i]->value = input[i];
-}
-
-inline void layer_read_values(ANNLayer *layer, annreal *output)
-{
-    int i;
-    for(i=0;i<layer->neurons_count;i++)
-        output[i] = layer->neurons[i]->value;
 }
 
 void ann_init(ANNet *net)
@@ -131,7 +120,7 @@ void ann_init(ANNet *net)
     net->output_layer = NULL;
     net->train_sets = NULL;
     net->train_sets_count = 0;
-    net->seed = time(NULL);
+    net->random_seed = time(NULL);
     srand(time(NULL));
 }
 
@@ -139,15 +128,18 @@ void ann_add_layer(ANNet *net, int neurons_count)
 {
     ANNLayer *layer;
 
+    /* skip layers without neurons */
     if(neurons_count <= 0)
         return;
 
     layer = malloc(sizeof(ANNLayer));
     layer_init(layer, neurons_count, net->output_layer);
 
+    /* first added layer is the input */
     if(!net->input_layer)
         net->input_layer = layer;
 
+    /* last added layer is the output */
     net->output_layer = layer;
 }
 
@@ -158,6 +150,7 @@ void ann_add_train_set(ANNet *net, annreal *input, annreal *output)
     int input_size = net->input_layer->neurons_count;
     int output_size = net->output_layer->neurons_count;
 
+    /* realloc train sets array */
     if(net->train_sets_count == 0)
         net->train_sets = (ANNSet**)malloc((net->train_sets_count+1) * sizeof(ANNSet*));
     else
@@ -165,10 +158,12 @@ void ann_add_train_set(ANNet *net, annreal *input, annreal *output)
 
     set = (ANNSet*)malloc(sizeof(ANNSet));
 
+    /* copy the input to the train set input buffer */
     set->input = malloc(sizeof(annreal) * input_size);
     for(i=0;i<input_size;++i)
         set->input[i] = input[i];
 
+    /* copy the output to the train set output buffer */
     set->output = malloc(sizeof(annreal) * output_size);
     for(i=0;i<output_size;++i)
         set->output[i] = output[i];
@@ -184,6 +179,7 @@ int ann_load_train_sets(ANNet *net, const char *filename)
     float tmp;
     FILE *fp;
 
+    /* open dataset file */
     fp = fopen(filename, "r");
     if(!fp) {
         printf("ANN error: could not load dataset %s\n", filename);
@@ -191,14 +187,17 @@ int ann_load_train_sets(ANNet *net, const char *filename)
     }
 
     while(!feof(fp)) {
+        /* read inputs */
         for(i=0;i<net->input_layer->neurons_count;++i) {
             fscanf(fp, "%f ", &tmp);
             in[i] = tmp;
         }
+        /* read desired outputs */
         for(i=0;i<net->output_layer->neurons_count;++i) {
             fscanf(fp, "%f ", &tmp);
             out[i] = tmp;
         }
+        /* add the train set */
         ann_add_train_set(net, in, out);
     }
 
@@ -213,25 +212,39 @@ void ann_run(ANNet *net, annreal *input, annreal *output)
     annreal value;
     int i, j;
 
-    layer_set_values(net->input_layer, input);
+    /* copy the input values to input layer's neurons */
+    for(i=0;i<net->input_layer->neurons_count;i++)
+        net->input_layer->neurons[i]->value = input[i];
 
-    /* feed forward */
+    /* feed forward algorithm, loops through all layers and feed the neurons  */
     layer = net->input_layer->next_layer;
     while(layer) {
+        /* loop through all layer's neurons */
         for(i=0;i<layer->neurons_count;i++) {
             neuron = layer->neurons[i];
+
+            /* sum values of input synapses's neurons */
             value = 0;
             for(j=0;j<neuron->input_synapses_count;++j)
                 value += neuron->input_synapses[j]->input_neuron->value * neuron->input_synapses[j]->weight;
+
+            /* sum the bias */
             value += neuron->bias * 1.0;
+
+            /* apply the activate function */
             value = activate_function(value, layer->steepness, layer->activate_func);
+
+            /* update neuron value */
             neuron->value = value;
         }
         layer = layer->next_layer;
     }
 
-    if(output)
-        layer_read_values(net->output_layer, output);
+    /* copy the output values if needed */
+    if(output) {
+        for(i=0;i<net->output_layer->neurons_count;i++)
+            output[i] = net->output_layer->neurons[i]->value;
+    }
 }
 
 void ann_train_set(ANNet *net, annreal *input, annreal *desiredOutput)
@@ -242,30 +255,35 @@ void ann_train_set(ANNet *net, annreal *input, annreal *desiredOutput)
     annreal delta, value;
     int i, j;
 
+    /* feed forward with the requested input */
     ann_run(net, input, NULL);
 
-    /* backpropagate */
+    /* backpropagate algorithm step 1, reverse loops through all layers and calculate neurons's deltas */
     layer = net->output_layer;
     while(layer != net->input_layer) {
         for(i=0;i<layer->neurons_count;i++) {
             neuron = layer->neurons[i];
 
+            /* calculate output layer's neurons delta */
             if(layer == net->output_layer) {
                 value = desiredOutput[i] - neuron->value;
                 delta = value * derive_activate_function(neuron->value, layer->steepness, layer->activate_func);
-            } else {
+            }
+            /* calculate hidden layers's neurons delta */
+            else {
                 delta = 0;
                 for(j=0;j<neuron->output_synapses_count;++j)
                     delta += neuron->output_synapses[j]->weight * neuron->output_synapses[j]->output_neuron->delta;
                 delta *= derive_activate_function(neuron->value, layer->steepness, layer->activate_func);
             }
 
+            /* set neuron delta */
             neuron->delta = delta;
         }
         layer = layer->prev_layer;
     }
 
-    /* update weights */
+    /* backpropagate algorithm step 2, reverse loops through all layers and update synapses's weights */
     layer = net->output_layer;
     while(layer != net->input_layer) {
         for(i=0;i<layer->neurons_count;i++) {
@@ -273,14 +291,19 @@ void ann_train_set(ANNet *net, annreal *input, annreal *desiredOutput)
 
             for(j=0;j<neuron->input_synapses_count;++j) {
                 synapse = neuron->input_synapses[j];
-                value = (layer->learning_rate * neuron->delta * synapse->input_neuron->value) + (layer->momentum * synapse->weight_delta);
-                synapse->weight += value;
-                synapse->weight_delta = value;
+
+                /* calculate synapse's weight delta */
+                delta = (layer->learning_rate * neuron->delta * synapse->input_neuron->value) + (layer->momentum * synapse->weight_delta);
+
+                synapse->weight += delta;
+                synapse->weight_delta = delta;
             }
 
-            value = (layer->learning_rate * neuron->delta * 1.0) + (layer->momentum * neuron->bias_delta);
-            neuron->bias += value;
-            neuron->bias_delta = value;
+            /* calculate neuron's bias delta */
+            delta = (layer->learning_rate * neuron->delta * 1.0) + (layer->momentum * neuron->bias_delta);
+
+            neuron->bias += delta;
+            neuron->bias_delta = delta;
         }
         layer = layer->prev_layer;
     }
@@ -292,15 +315,19 @@ void ann_train_sets(ANNet *net)
     uint i, index;
     const uint sets_count = net->train_sets_count;
 
-    /* random shuffle */
+    /* random shuffle train sets*/
     for(i=0;i<sets_count-1;++i) {
-        net->seed = (net->seed *1103515245)+12345;
-        index = i+(net->seed%(sets_count-i));
+        /* generate our own random, it's faster than std's one */
+        net->random_seed = (net->random_seed * 1103515245) + 12345;
+        index = i + (net->random_seed % (sets_count-i));
+
+        /* swap train sets */
         set = net->train_sets[i];
         net->train_sets[i] = net->train_sets[index];
         net->train_sets[index] = set;
     }
 
+    /* train each set */
     for(i=0;i<sets_count;++i) {
         set = net->train_sets[i];
         ann_train_set(net, set->input, set->output);

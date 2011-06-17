@@ -42,23 +42,22 @@ struct ANNSynapse {
 };
 
 struct ANNNeuron {
-    annreal delta;
     annreal value;
+    annreal delta;
     annreal bias;
     annreal bias_delta;
     ushort input_synapses_count;
     ushort output_synapses_count;
     ANNSynapse **input_synapses;
     ANNSynapse **output_synapses;
-    ANNLayer *layer;
 };
 
 struct ANNLayer {
-    ANNActivateFunction activate_func;
     annreal learning_rate;
     annreal momentum;
     annreal steepness;
     ushort neurons_count;
+    ANNActivateFunction activate_func;
     ANNNeuron **neurons;
     ANNLayer *prev_layer;
     ANNLayer *next_layer;
@@ -70,11 +69,11 @@ struct ANNSet {
 };
 
 struct ANNet {
+    uint train_sets_count;
+    uint random_seed;
     ANNLayer *input_layer;
     ANNLayer *output_layer;
     ANNSet **train_sets;
-    uint train_sets_count;
-    uint seed;
 };
 
 #ifdef __cplusplus
