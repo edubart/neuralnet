@@ -178,8 +178,8 @@ void ann_add_train_set(ANNet *net, nnreal *input, nnreal *output)
 
 int ann_load_train_sets(ANNet *net, const char *filename)
 {
-    nnreal in[100];
-    nnreal out[100];
+    nnreal in[1000];
+    nnreal out[1000];
     int i;
     float tmp;
     FILE *fp;
@@ -288,48 +288,74 @@ void ann_train_set(ANNet *net, nnreal *input, nnreal *desiredOutput)
 
 void ann_train_sets(ANNet *net)
 {
-    int i, index;
     ANNSet *set;
+    uint i, idx;
+    const uint n = net->numTrainSets;
 
-    for(i=0;i<net->numTrainSets;++i) {
-        net->randSeed = net->randSeed * 1103515245 + 12345;
-        index = (net->randSeed/65536) % net->numTrainSets;
+    /* random shuffle */
+    for(i=0;i<n-1;++i) {
+        net->randSeed = (net->randSeed *1103515245)+12345;
+        idx = i+(net->randSeed%(n-i));
+        set = net->trainSets[i];
+        net->trainSets[i] = net->trainSets[idx];
+        net->trainSets[idx] = set;
+    }
 
-        set = net->trainSets[index];
+    for(i=0;i<n;++i) {
+        set = net->trainSets[i];
         ann_train_set(net, set->input, set->output);
     }
 }
 
-void ann_train(ANNet *net, uint maxEpochs, uint epochsBetweenReports, nnreal minimumRMSE, nnreal bitFailLimit)
+void ann_train(ANNet *net, nnreal maxTrainTime, ANNStopMode stopMode, nnreal stopParam)
 {
     int i, j;
     nnreal absoluteError;
-    uint epoch = 0;
+    uint epoch = 1;
     nnreal rmse = 0;
     uint bitFails = 0;
-    while(1) {
-        if(epoch % epochsBetweenReports == 0) {
-            rmse = 0;
-            bitFails = 0;
-            for(i=0;i<net->numTrainSets;++i) {
-                ann_run(net, net->trainSets[i]->input, NULL);
-                for(j=0;j<net->outputLayer->numNeurons;++j) {
-                    absoluteError = net->outputLayer->neurons[j]->value - net->trainSets[i]->output[j];
-                    if(fabs(absoluteError) >= bitFailLimit)
-                        bitFails++;
-                    rmse += absoluteError*absoluteError;
-                }
-            }
-            rmse = sqrt(rmse/(net->numTrainSets * net->outputLayer->numNeurons));
+    nnreal bitFailLimit = 0.035;
+    nnreal lastReportTime = 0;
+    nnreal timeNow;
+    nnreal stopTime = ann_get_millis() + (maxTrainTime * 1000);
+    int mustStop= 0;
 
-            printf("Epoch: %10u    Current Error: %.10f    Bit fails: %d\n", epoch, rmse, bitFails);
+    if(stopMode == ANN_STOP_NO_BITFAILS)
+        bitFailLimit = stopParam;
+
+    while(1) {
+        rmse = 0;
+        bitFails = 0;
+        for(i=0;i<net->numTrainSets;++i) {
+            ann_run(net, net->trainSets[i]->input, NULL);
+            for(j=0;j<net->outputLayer->numNeurons;++j) {
+                absoluteError = net->outputLayer->neurons[j]->value - net->trainSets[i]->output[j];
+                if(fabs(absoluteError) >= bitFailLimit)
+                    bitFails++;
+                rmse += absoluteError*absoluteError;
+            }
+        }
+        rmse = sqrt(rmse/(net->numTrainSets * net->outputLayer->numNeurons));
+
+        timeNow = ann_get_millis();
+
+        if(stopMode == ANN_STOP_NO_BITFAILS && bitFails == 0)
+            mustStop = 1;
+        else if(stopMode == ANN_STOP_MAX_RMSE && rmse < stopParam)
+            mustStop = 1;
+        else if(timeNow >= stopTime && stopTime > 0)
+            mustStop = 1;
+
+        if(timeNow - lastReportTime >= 500 || mustStop) {
+            printf("Epoch: %10u    Current RMSE: %.10f    Bit fails: %d\n", epoch, rmse, bitFails);
             fflush(stdout);
+            lastReportTime = timeNow;
         }
 
-        ++epoch;
-        if(epoch >= maxEpochs || (rmse < minimumRMSE && bitFails == 0))
+        if(mustStop)
             break;
 
+        ++epoch;
         ann_train_sets(net);
     }
 }

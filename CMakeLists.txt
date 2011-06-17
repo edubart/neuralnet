@@ -3,7 +3,7 @@ PROJECT(neuralnet)
 
 SET(CMAKE_BUILD_TYPE Release)
 SET(CMAKE_C_FLAGS "-Wall")
-SET(CMAKE_C_FLAGS_DEBUG "-O1 -g -ggdb -fno-inline")
+SET(CMAKE_C_FLAGS_DEBUG "-O1 -g -ggdb")
 SET(CMAKE_C_FLAGS_RELEASE "-O3 -fomit-frame-pointer")
 
 ADD_EXECUTABLE(neuralnet main.c ann.c)

@@ -28,6 +28,12 @@ typedef enum {
     ANN_INPUT_LAYER = -3
 } ANNLayerGroup;
 
+typedef enum {
+    ANN_STOP_MAX_RMSE,
+    ANN_STOP_NO_BITFAILS,
+    ANN_DONT_STOP
+} ANNStopMode;
+
 struct ANNSynapse {
     nnreal weight;
     nnreal weightChange;
@@ -86,7 +92,7 @@ void ann_run(ANNet *net, nnreal *input, nnreal *output);
 
 void ann_train_set(ANNet *net, nnreal *input, nnreal *output);
 void ann_train_sets(ANNet *net);
-void ann_train(ANNet *net, uint maxEpochs, uint epochsBetweenReports, nnreal minimumRMSE, nnreal bitFailLimit);
+void ann_train(ANNet *net, nnreal maxTrainTime, ANNStopMode stopMode, nnreal stopParam);
 
 nnreal ann_calc_set_rmse(ANNet *net, nnreal *input, nnreal *output);
 nnreal ann_calc_rmse(ANNet *net);

@@ -1,11 +1,12 @@
 #include <stdio.h>
 #include "ann.h"
 
+#include <time.h>
+
 void run_ann_benckmark(const char *datasetFilename,
-              uint maxEphocs,
-              uint epochsBetweenReports,
-              nnreal desiredRMSE,
-              nnreal bitFailLimit,
+                       nnreal maxTrainTime,
+                       ANNStopMode stopMode,
+              nnreal stopParam,
               uint numInput,
               uint numHidden,
               uint numHidden2,
@@ -18,7 +19,7 @@ void run_ann_benckmark(const char *datasetFilename,
     ANNet net;
     nnreal elapsed;
 
-    printf(">> training dataset '%s' with desired RMSE %f\n", datasetFilename, desiredRMSE);
+    printf(">> training dataset '%s'\n", datasetFilename);
 
     ann_init(&net);
     ann_add_layer(&net, numInput);
@@ -32,7 +33,7 @@ void run_ann_benckmark(const char *datasetFilename,
     ann_load_train_sets(&net, datasetFilename);
 
     elapsed = ann_get_millis();
-    ann_train(&net, maxEphocs, epochsBetweenReports, desiredRMSE, bitFailLimit);
+    ann_train(&net, maxTrainTime, stopMode, stopParam);
     elapsed = (ann_get_millis() - elapsed)/1000.0;
 
     printf(">> train completed in %.3f seconds\n\n", elapsed);
@@ -41,24 +42,40 @@ void run_ann_benckmark(const char *datasetFilename,
 int main(int argc, char **argv)
 {
     run_ann_benckmark("datasets/xor.train",
-                      100000, 1000, 0.01, 0.01,
+                      300, ANN_STOP_NO_BITFAILS, 0.035,
                       2, 3, 0, 1,
                       0.7, 0,
                       ANN_SIGMOID,
                       ANN_LINEAR);
 
     run_ann_benckmark("datasets/mushroom.train",
-                      300, 10, 0.01, 0.01,
+                      300, ANN_STOP_NO_BITFAILS, 0.035,
                       125, 32, 0, 2,
                       0.7, 0,
                       ANN_SIGMOID,
                       ANN_SIGMOID);
 
     run_ann_benckmark("datasets/robot.train",
-                      3000, 100, 0.01, 0.1,
+                      300, ANN_STOP_NO_BITFAILS, 0.1,
                       48, 96, 0, 3,
                       0.7, 0.4,
                       ANN_SIGMOID,
                       ANN_SIGMOID);
+
+    /*
+    run_ann_benckmark("datasets/parity8.train",
+                      300, ANN_STOP_NO_BITFAILS, 0.1,
+                      8, 16, 0, 1,
+                      0.7, 0.8,
+                      ANN_SIGMOID,
+                      ANN_SIGMOID);
+
+    run_ann_benckmark("datasets/building.train",
+                      300, ANN_STOP_NO_BITFAILS, 0.1,
+                      14, 16, 0, 3,
+                      0.7, 0,
+                      ANN_SIGMOID,
+                      ANN_SIGMOID);
+    */
     return 0;
 }
