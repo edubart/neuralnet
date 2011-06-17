@@ -4,20 +4,20 @@
 #include <time.h>
 
 void run_ann_benckmark(const char *datasetFilename,
-                       nnreal maxTrainTime,
-                       ANNStopMode stopMode,
-              nnreal stopParam,
+                       annreal max_train_time,
+                       ANNStopMode stop_mode,
+              annreal stop_param,
               uint numInput,
               uint numHidden,
               uint numHidden2,
               uint numOutput,
-              nnreal learningRate,
-              nnreal momentum,
+              annreal learning_rate,
+              annreal momentum,
               ANNActivateFunction hiddenActivateFunction,
               ANNActivateFunction outputActivateFunction)
 {
     ANNet net;
-    nnreal elapsed;
+    annreal elapsed;
 
     printf(">> training dataset '%s'\n", datasetFilename);
 
@@ -28,12 +28,12 @@ void run_ann_benckmark(const char *datasetFilename,
     ann_add_layer(&net, numOutput);
     ann_set_activate_function(&net, hiddenActivateFunction, ANN_HIDDEN_LAYERS);
     ann_set_activate_function(&net, outputActivateFunction, ANN_OUTPUT_LAYER);
-    ann_set_learning_rate(&net, learningRate, ANN_ALL_LAYERS);
+    ann_set_learning_rate(&net, learning_rate, ANN_ALL_LAYERS);
     ann_set_momentum(&net, momentum, ANN_ALL_LAYERS);
     ann_load_train_sets(&net, datasetFilename);
 
     elapsed = ann_get_millis();
-    ann_train(&net, maxTrainTime, stopMode, stopParam);
+    ann_train(&net, max_train_time, stop_mode, stop_param);
     elapsed = (ann_get_millis() - elapsed)/1000.0;
 
     printf(">> train completed in %.3f seconds\n\n", elapsed);

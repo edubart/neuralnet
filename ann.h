@@ -6,7 +6,7 @@
 
 typedef unsigned short ushort;
 typedef unsigned int uint;
-typedef double nnreal;
+typedef double annreal;
 
 typedef struct ANNSynapse ANNSynapse;
 typedef struct ANNNeuron ANNNeuron;
@@ -35,47 +35,46 @@ typedef enum {
 } ANNStopMode;
 
 struct ANNSynapse {
-    nnreal weight;
-    nnreal weightChange;
-    ANNNeuron *inputNeuron;
-    ANNNeuron *outputNeuron;
+    annreal weight;
+    annreal weight_delta;
+    ANNNeuron *input_neuron;
+    ANNNeuron *output_neuron;
 };
 
 struct ANNNeuron {
-    nnreal delta;
-    nnreal value;
-    nnreal bias;
-    nnreal biasChange;
-    ushort numInputSynapses;
-    ushort numOutputSynapses;
-    ANNSynapse **inputSynapses;
-    ANNSynapse **outputSynapses;
+    annreal delta;
+    annreal value;
+    annreal bias;
+    annreal bias_delta;
+    ushort input_synapses_count;
+    ushort output_synapses_count;
+    ANNSynapse **input_synapses;
+    ANNSynapse **output_synapses;
     ANNLayer *layer;
 };
 
 struct ANNLayer {
-    ANNActivateFunction activateFunc;
-    nnreal learningRate;
-    nnreal momentum;
-    nnreal steepness;
-    ushort numNeurons;
+    ANNActivateFunction activate_func;
+    annreal learning_rate;
+    annreal momentum;
+    annreal steepness;
+    ushort neurons_count;
     ANNNeuron **neurons;
-    ANNLayer *prevLayer;
-    ANNLayer *nextLayer;
+    ANNLayer *prev_layer;
+    ANNLayer *next_layer;
 };
 
 struct ANNSet {
-    nnreal *input;
-    nnreal *output;
+    annreal *input;
+    annreal *output;
 };
 
 struct ANNet {
-    ANNLayer *inputLayer;
-    ANNLayer *outputLayer;
-    ANNSet **trainSets;
-    uint numTrainSets;
-    uint randSeed;
-    nnreal adptativeLearningRate;
+    ANNLayer *input_layer;
+    ANNLayer *output_layer;
+    ANNSet **train_sets;
+    uint train_sets_count;
+    uint seed;
 };
 
 #ifdef __cplusplus
@@ -84,37 +83,37 @@ extern "C" {
 
 void ann_init(ANNet *net);
 
-void ann_add_layer(ANNet *net, int numNeurons);
-void ann_add_train_set(ANNet *net, nnreal *input, nnreal *output);
+void ann_add_layer(ANNet *net, int neurons_count);
+void ann_add_train_set(ANNet *net, annreal *input, annreal *output);
 int ann_load_train_sets(ANNet *net, const char *filename);
 
-void ann_run(ANNet *net, nnreal *input, nnreal *output);
+void ann_run(ANNet *net, annreal *input, annreal *output);
 
-void ann_train_set(ANNet *net, nnreal *input, nnreal *output);
+void ann_train_set(ANNet *net, annreal *input, annreal *output);
 void ann_train_sets(ANNet *net);
-void ann_train(ANNet *net, nnreal maxTrainTime, ANNStopMode stopMode, nnreal stopParam);
+void ann_train(ANNet *net, annreal max_train_time, ANNStopMode stop_mode, annreal stop_param);
 
-nnreal ann_calc_set_rmse(ANNet *net, nnreal *input, nnreal *output);
-nnreal ann_calc_rmse(ANNet *net);
+annreal ann_calc_set_rmse(ANNet *net, annreal *input, annreal *output);
+annreal ann_calc_rmse(ANNet *net);
 
-void ann_set_learning_rate(ANNet *net, nnreal learningRate, ANNLayerGroup layerGroup);
-void ann_set_momentum(ANNet *net, nnreal momentum, ANNLayerGroup layerGroup);
-void ann_set_steepness(ANNet *net, nnreal steepness, ANNLayerGroup layerGroup);
-void ann_set_activate_function(ANNet *net, ANNActivateFunction func, ANNLayerGroup layerGroup);
-void ann_randomize_weights(ANNet *net, nnreal min, nnreal max);
+void ann_set_learning_rate(ANNet *net, annreal learning_rate, ANNLayerGroup layer_group);
+void ann_set_momentum(ANNet *net, annreal momentum, ANNLayerGroup layer_group);
+void ann_set_steepness(ANNet *net, annreal steepness, ANNLayerGroup layer_group);
+void ann_set_activate_function(ANNet *net, ANNActivateFunction func, ANNLayerGroup layer_group);
+void ann_randomize_weights(ANNet *net, annreal min, annreal max);
 
 void ann_dump(ANNet *net);
 void ann_dump_train_sets(ANNet *net);
 
 /* utilities */
-extern inline nnreal ann_random_range(nnreal min, nnreal max)
+extern inline annreal ann_random_range(annreal min, annreal max)
 { return (min + (((max-min) * rand())/(RAND_MAX + 1.0))); }
-extern inline nnreal ann_convert_range(nnreal v, nnreal from_min, nnreal from_max, nnreal to_min, nnreal to_max)
+extern inline annreal ann_convert_range(annreal v, annreal from_min, annreal from_max, annreal to_min, annreal to_max)
 { return ((((v - from_min) / (from_max - from_min)) * (to_max - to_min)) + to_min); }
-extern inline nnreal ann_clip(nnreal v, nnreal min, nnreal max)
+extern inline annreal ann_clip(annreal v, annreal min, annreal max)
 { return ((v < max) ? ((v > min) ? v : min) : max); }
-extern inline nnreal ann_get_millis()
-{ struct timeb t; ftime(&t); return (((nnreal)t.millitm) + ((nnreal)t.time) * 1000); }
+extern inline annreal ann_get_millis()
+{ struct timeb t; ftime(&t); return (((annreal)t.millitm) + ((annreal)t.time) * 1000); }
 
 #ifdef __cplusplus
 };
