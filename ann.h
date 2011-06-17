@@ -2,6 +2,7 @@
 #define ANN_H
 
 #include <stdlib.h>
+#include <sys/timeb.h>
 
 typedef unsigned short ushort;
 typedef unsigned int uint;
@@ -24,7 +25,7 @@ typedef enum {
     ANN_ALL_LAYERS = 0,
     ANN_HIDDEN_LAYERS = -1,
     ANN_OUTPUT_LAYER = -2,
-    ANN_INPUT_LAYER = -3,
+    ANN_INPUT_LAYER = -3
 } ANNLayerGroup;
 
 struct ANNSynapse {
@@ -77,8 +78,9 @@ extern "C" {
 
 void ann_init(ANNet *net);
 
-ANNLayer *ann_add_layer(ANNet *net, int numNeurons);
+void ann_add_layer(ANNet *net, int numNeurons);
 void ann_add_train_set(ANNet *net, nnreal *input, nnreal *output);
+int ann_load_train_sets(ANNet *net, const char *filename);
 
 void ann_run(ANNet *net, nnreal *input, nnreal *output);
 
@@ -98,14 +100,15 @@ void ann_randomize_weights(ANNet *net, nnreal min, nnreal max);
 void ann_dump(ANNet *net);
 void ann_dump_train_sets(ANNet *net);
 
-inline nnreal ann_random_range(nnreal min, nnreal max)
+/* utilities */
+extern inline nnreal ann_random_range(nnreal min, nnreal max)
 { return (min + (((max-min) * rand())/(RAND_MAX + 1.0))); }
-
-inline nnreal ann_convert_range(nnreal v, nnreal from_min, nnreal from_max, nnreal to_min, nnreal to_max)
+extern inline nnreal ann_convert_range(nnreal v, nnreal from_min, nnreal from_max, nnreal to_min, nnreal to_max)
 { return ((((v - from_min) / (from_max - from_min)) * (to_max - to_min)) + to_min); }
-
-inline nnreal ann_clip(nnreal v, nnreal min, nnreal max)
+extern inline nnreal ann_clip(nnreal v, nnreal min, nnreal max)
 { return ((v < max) ? ((v > min) ? v : min) : max); }
+extern inline nnreal ann_get_millis()
+{ struct timeb t; ftime(&t); return (((nnreal)t.millitm) + ((nnreal)t.time) * 1000); }
 
 #ifdef __cplusplus
 };

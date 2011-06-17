@@ -55,15 +55,15 @@ inline void neuron_init(ANNNeuron *neuron, ANNLayer *layer) {
 
 inline void layer_link(ANNLayer *inputLayer, ANNLayer *outputLayer)
 {
-    inputLayer->nextLayer = outputLayer;
-    outputLayer->prevLayer = inputLayer;
-
     int numInputNeurons = inputLayer->numNeurons;
     int numOutputNeurons = outputLayer->numNeurons;
     int i, j;
     ANNNeuron *inputNeuron;
     ANNNeuron *outputNeuron;
     ANNSynapse *synapse;
+
+    inputLayer->nextLayer = outputLayer;
+    outputLayer->prevLayer = inputLayer;
 
     for(i=0;i<numInputNeurons;++i) {
         inputNeuron = inputLayer->neurons[i];
@@ -88,6 +88,8 @@ inline void layer_link(ANNLayer *inputLayer, ANNLayer *outputLayer)
 
 inline void layer_init(ANNLayer *layer, int numNeurons, ANNLayer *prevLayer)
 {
+    int i;
+
     layer->nextLayer = NULL;
     layer->prevLayer = NULL;
     layer->numNeurons = numNeurons;
@@ -97,7 +99,6 @@ inline void layer_init(ANNLayer *layer, int numNeurons, ANNLayer *prevLayer)
     layer->activateFunc = ANN_SIGMOID_SYMMETRIC;
     layer->neurons = malloc(numNeurons * sizeof(ANNNeuron *));
 
-    int i;
     for(i=0;i<numNeurons;++i) {
         layer->neurons[i] = malloc(sizeof(ANNNeuron));
         neuron_init(layer->neurons[i], layer);
@@ -134,16 +135,20 @@ void ann_init(ANNet *net)
     srand(time(NULL));
 }
 
-ANNLayer *ann_add_layer(ANNet *net, int numNeurons)
+void ann_add_layer(ANNet *net, int numNeurons)
 {
-    ANNLayer *layer = malloc(sizeof(ANNLayer));
+    ANNLayer *layer;
+
+    if(numNeurons <= 0)
+        return;
+
+    layer = malloc(sizeof(ANNLayer));
     layer_init(layer, numNeurons, net->outputLayer);
 
     if(!net->inputLayer)
         net->inputLayer = layer;
 
     net->outputLayer = layer;
-    return layer;
 }
 
 void ann_add_train_set(ANNet *net, nnreal *input, nnreal *output)
@@ -151,13 +156,14 @@ void ann_add_train_set(ANNet *net, nnreal *input, nnreal *output)
     int numInputs = net->inputLayer->numNeurons;
     int numOutputs = net->outputLayer->numNeurons;
     int i;
+    ANNSet *set;
 
     if(net->numTrainSets == 0)
         net->trainSets = (ANNSet**)malloc((net->numTrainSets+1) * sizeof(ANNSet*));
     else
         net->trainSets = (ANNSet**)realloc(net->trainSets, (net->numTrainSets+1) * sizeof(ANNSet*));
 
-    ANNSet *set = (ANNSet*)malloc(sizeof(ANNSet));
+    set = (ANNSet*)malloc(sizeof(ANNSet));
 
     set->input = malloc(sizeof(nnreal) * numInputs);
     for(i=0;i<numInputs;++i)
@@ -168,6 +174,36 @@ void ann_add_train_set(ANNet *net, nnreal *input, nnreal *output)
         set->output[i] = output[i];
 
     net->trainSets[net->numTrainSets++] = set;
+}
+
+int ann_load_train_sets(ANNet *net, const char *filename)
+{
+    nnreal in[100];
+    nnreal out[100];
+    int i;
+    float tmp;
+    FILE *fp;
+
+    fp = fopen(filename, "r");
+    if(!fp) {
+        printf("ANN error: could not load dataset %s\n", filename);
+        return 0;
+    }
+
+    while(!feof(fp)) {
+        for(i=0;i<net->inputLayer->numNeurons;++i) {
+            fscanf(fp, "%f ", &tmp);
+            in[i] = tmp;
+        }
+        for(i=0;i<net->outputLayer->numNeurons;++i) {
+            fscanf(fp, "%f ", &tmp);
+            out[i] = tmp;
+        }
+        ann_add_train_set(net, in, out);
+    }
+
+    fclose(fp);
+    return 1;
 }
 
 void ann_run(ANNet *net, nnreal *input, nnreal *output)
