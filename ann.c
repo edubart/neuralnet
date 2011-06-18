@@ -94,9 +94,6 @@ inline void layer_init(ANNLayer *layer, int neurons_count, ANNLayer *prev_layer)
     layer->next_layer = NULL;
     layer->prev_layer = NULL;
     layer->neurons_count = neurons_count;
-    layer->steepness = 1.0;
-    layer->learning_rate = 0.7;
-    layer->momentum = 0;
     layer->activate_func = ANN_SIGMOID_SYMMETRIC;
     layer->neurons = malloc(neurons_count * sizeof(ANNNeuron *));
 
@@ -116,10 +113,18 @@ inline void layer_init(ANNLayer *layer, int neurons_count, ANNLayer *prev_layer)
 
 void ann_init(ANNet *net)
 {
+    net->learning_rate = 0.7;
+    net->momentum = 0;
+    net->steepness = 1;
+    net->train_sets_count = 0;
+    net->rmse = 0;
+    net->desired_rmse = 0;
+    net->bit_fail_limit = 0.01;
+    net->bit_fails = -1;
+    net->stop_mode = ANN_DONT_STOP;
     net->input_layer = NULL;
     net->output_layer = NULL;
     net->train_sets = NULL;
-    net->train_sets_count = 0;
     net->random_seed = time(NULL);
     srand(time(NULL));
 }
@@ -232,7 +237,7 @@ void ann_run(ANNet *net, annreal *input, annreal *output)
             value += neuron->bias * 1.0;
 
             /* apply the activate function */
-            value = activate_function(value, layer->steepness, layer->activate_func);
+            value = activate_function(value, net->steepness, layer->activate_func);
 
             /* update neuron value */
             neuron->value = value;
@@ -267,14 +272,14 @@ void ann_train_set(ANNet *net, annreal *input, annreal *desiredOutput)
             /* calculate output layer's neurons delta */
             if(layer == net->output_layer) {
                 value = desiredOutput[i] - neuron->value;
-                delta = value * derive_activate_function(neuron->value, layer->steepness, layer->activate_func);
+                delta = value * derive_activate_function(neuron->value, net->steepness, layer->activate_func);
             }
             /* calculate hidden layers's neurons delta */
             else {
                 delta = 0;
                 for(j=0;j<neuron->output_synapses_count;++j)
                     delta += neuron->output_synapses[j]->weight * neuron->output_synapses[j]->output_neuron->delta;
-                delta *= derive_activate_function(neuron->value, layer->steepness, layer->activate_func);
+                delta *= derive_activate_function(neuron->value, net->steepness, layer->activate_func);
             }
 
             /* set neuron delta */
@@ -293,14 +298,14 @@ void ann_train_set(ANNet *net, annreal *input, annreal *desiredOutput)
                 synapse = neuron->input_synapses[j];
 
                 /* calculate synapse's weight delta */
-                delta = (layer->learning_rate * neuron->delta * synapse->input_neuron->value) + (layer->momentum * synapse->weight_delta);
+                delta = (net->learning_rate * neuron->delta * synapse->input_neuron->value) + (net->momentum * synapse->weight_delta);
 
                 synapse->weight += delta;
                 synapse->weight_delta = delta;
             }
 
             /* calculate neuron's bias delta */
-            delta = (layer->learning_rate * neuron->delta * 1.0) + (layer->momentum * neuron->bias_delta);
+            delta = (net->learning_rate * neuron->delta * 1.0) + (net->momentum * neuron->bias_delta);
 
             neuron->bias += delta;
             neuron->bias_delta = delta;
@@ -334,136 +339,99 @@ void ann_train_sets(ANNet *net)
     }
 }
 
-void ann_train(ANNet *net, annreal max_train_time, ANNStopMode stop_mode, annreal stop_param)
+void ann_train(ANNet *net, annreal max_train_time, annreal report_interval)
 {
-    int i, j;
-    int must_stop = 0;
-    uint epoch = 1;
-    uint bit_fails = 0;
-    annreal absoluteError;
-    annreal rmse = 0;
-    annreal bit_fail_limit = 0.035;
+    uint epoch;
     annreal last_report_time = 0;
     annreal time_now;
-    annreal stop_time = ann_get_millis() + (max_train_time * 1000);
+    annreal stop_time = ann_get_seconds() + max_train_time;
 
-    if(stop_mode == ANN_STOP_NO_BITFAILS)
-        bit_fail_limit = stop_param;
+    for(epoch=1;;++epoch) {
+        ann_calc_errors(net);
 
-    while(1) {
-        rmse = 0;
-        bit_fails = 0;
-        for(i=0;i<net->train_sets_count;++i) {
-            ann_run(net, net->train_sets[i]->input, NULL);
-            for(j=0;j<net->output_layer->neurons_count;++j) {
-                absoluteError = net->output_layer->neurons[j]->value - net->train_sets[i]->output[j];
-                if(fabs(absoluteError) >= bit_fail_limit)
-                    bit_fails++;
-                rmse += absoluteError*absoluteError;
-            }
-        }
-        rmse = sqrt(rmse/(net->train_sets_count * net->output_layer->neurons_count));
+        time_now = ann_get_seconds();
 
-        time_now = ann_get_millis();
-
-        if(stop_mode == ANN_STOP_NO_BITFAILS && bit_fails == 0)
-            must_stop = 1;
-        else if(stop_mode == ANN_STOP_MAX_RMSE && rmse < stop_param)
-            must_stop = 1;
-        else if(time_now >= stop_time && stop_time > 0)
-            must_stop = 1;
-
-        if(time_now - last_report_time >= 500 || must_stop) {
-            printf("Epoch: %10u    Current RMSE: %.10f    Bit fails: %d\n", epoch, rmse, bit_fails);
-            fflush(stdout);
+        if((net->stop_mode == ANN_STOP_NO_BITFAILS && net->bit_fails == 0) ||
+           (net->stop_mode == ANN_STOP_DESIRED_RMSE && net->rmse < net->desired_rmse) ||
+           (time_now >= stop_time && max_train_time > 0)) {
+            break;
+        } else if((time_now - last_report_time) >= report_interval) {
+            ann_report(net, epoch);
             last_report_time = time_now;
         }
 
-        if(must_stop)
-            break;
-
-        ++epoch;
         ann_train_sets(net);
     }
+
+    ann_report(net, epoch);
+}
+
+void ann_report(ANNet* net, uint epoch)
+{
+    printf("Epoch: %10u    Current RMSE: %.10f    Bit fails: %d\n", epoch, net->rmse, net->bit_fails);
+    fflush(stdout);
+}
+
+void ann_calc_errors(ANNet* net)
+{
+    annreal error;
+    annreal rmse = 0;
+    uint bit_fails = 0;
+    int i, j;
+
+    /* loop through all sets and calculate errors */
+    for(i=0;i<net->train_sets_count;++i) {
+        ann_run(net, net->train_sets[i]->input, NULL);
+        for(j=0;j<net->output_layer->neurons_count;++j) {
+            error = net->output_layer->neurons[j]->value - net->train_sets[i]->output[j];
+            if(fabs(error) >= net->bit_fail_limit)
+                bit_fails++;
+            rmse += error*error;
+        }
+    }
+    rmse = sqrt(rmse/(net->train_sets_count * net->output_layer->neurons_count));
+
+    net->rmse = rmse;
+    net->bit_fails = bit_fails;
 }
 
 annreal ann_calc_set_rmse(ANNet *net, annreal *input, annreal *output)
 {
-    annreal absoluteError;
+    annreal error;
     annreal rmse = 0;
     int i;
 
+    /* calculate set rmse */
     ann_run(net, input, NULL);
     for(i=0;i<net->output_layer->neurons_count;++i) {
-        absoluteError = net->output_layer->neurons[i]->value - output[i];
-        rmse += absoluteError*absoluteError;
+        error = net->output_layer->neurons[i]->value - output[i];
+        rmse += error*error;
     }
     rmse = sqrt(rmse/net->output_layer->neurons_count);
     return rmse;
 }
 
-annreal ann_calc_rmse(ANNet* net)
+void ann_dump_train_sets(ANNet* net)
 {
-    annreal absoluteError;
-    annreal rmse = 0;
     int i, j;
+    annreal error;
+    ANNSet *set;
+    annreal rmse;
 
     for(i=0;i<net->train_sets_count;++i) {
-        ann_run(net, net->train_sets[i]->input, NULL);
+        rmse = 0;
+        set = net->train_sets[i];
+        ann_run(net, set->input, NULL);
+        for(j=0;j<net->input_layer->neurons_count;++j)
+            printf("%.2f ", set->input[j]);
+        printf("=> ");
         for(j=0;j<net->output_layer->neurons_count;++j) {
-            absoluteError = fabs(net->output_layer->neurons[j]->value - net->train_sets[i]->output[j]);
-            rmse += absoluteError*absoluteError;
+            error = net->output_layer->neurons[j]->value - set->output[j];
+            printf("%.2f ", net->output_layer->neurons[j]->value);
+            rmse += error*error;
         }
-    }
-    rmse = sqrt(rmse/(net->train_sets_count * net->output_layer->neurons_count));
-    return rmse;
-}
-
-void ann_set_learning_rate(ANNet *net, annreal learning_rate, ANNLayerGroup layer_group)
-{
-    ANNLayer *layer = net->input_layer;
-    while(layer) {
-        if(layer_group == ANN_ALL_LAYERS ||
-          (layer_group == ANN_HIDDEN_LAYERS && layer != net->input_layer && layer != net->output_layer) ||
-          (layer_group == ANN_OUTPUT_LAYER && layer == net->output_layer))
-            layer->learning_rate = learning_rate;
-        layer = layer->next_layer;
-    }
-}
-
-void ann_set_momentum(ANNet* net, annreal momentum, ANNLayerGroup layer_group)
-{
-    ANNLayer *layer = net->input_layer;
-    while(layer) {
-        if(layer_group == ANN_ALL_LAYERS ||
-          (layer_group == ANN_HIDDEN_LAYERS && layer != net->input_layer && layer != net->output_layer) ||
-          (layer_group == ANN_OUTPUT_LAYER && layer == net->output_layer))
-            layer->momentum = momentum;
-        layer = layer->next_layer;
-    }
-}
-
-void ann_set_steepness(ANNet* net, annreal steepness, ANNLayerGroup layer_group)
-{
-    ANNLayer *layer = net->input_layer;
-    while(layer) {
-        if(layer_group == ANN_ALL_LAYERS ||
-          (layer_group == ANN_HIDDEN_LAYERS && layer != net->input_layer && layer != net->output_layer) ||
-          (layer_group == ANN_OUTPUT_LAYER && layer == net->output_layer))
-            layer->steepness = steepness;
-        layer = layer->next_layer;
-    }
-}
-
-void ann_set_activate_function(ANNet* net, ANNActivateFunction func, ANNLayerGroup layer_group)
-{
-    ANNLayer *layer = net->input_layer;
-    while(layer) {
-        if(layer_group == ANN_ALL_LAYERS ||
-          (layer_group == ANN_HIDDEN_LAYERS && layer != net->input_layer && layer != net->output_layer) ||
-          (layer_group == ANN_OUTPUT_LAYER && layer == net->output_layer))
-            layer->activate_func = func;
-        layer = layer->next_layer;
+        rmse = sqrt(rmse/net->output_layer->neurons_count);
+        printf("[err: %.5f]\n", rmse);
     }
 }
 
@@ -480,7 +448,6 @@ void ann_randomize_weights(ANNet* net, annreal min, annreal max)
             neuron = layer->neurons[i];
             neuron->bias = ann_random_range(min, max);
             neuron->bias_delta = 0;
-            neuron->delta = 0;
 
             for(j=0;j<neuron->input_synapses_count;++j) {
                 synapse = neuron->input_synapses[j];
@@ -492,51 +459,44 @@ void ann_randomize_weights(ANNet* net, annreal min, annreal max)
     }
 }
 
-void ann_dump(ANNet* net)
+void ann_set_desired_rmse(ANNet* net, annreal desired_rmse)
 {
-    ANNLayer *layer;
-    ANNNeuron *neuron;
-    ANNSynapse *synapse;
-    int i, j;
-    int layerCount = 0;
-
-    layer = net->input_layer;
-    while(layer) {
-        printf("layer[%d]\n", layerCount);
-        for(i=0;i<layer->neurons_count;i++) {
-            neuron = layer->neurons[i];
-            printf("  neuron[%d] => (value = %f, delta = %f, bias = %f, bias_delta = %f)\n", i, neuron->value, neuron->delta, neuron->bias, neuron->bias_delta);
-
-            for(j=0;j<neuron->input_synapses_count;++j) {
-                synapse = neuron->input_synapses[j];
-                printf("    synapse[%d] => (weight = %f, weight_delta = %f)\n", j, synapse->weight, synapse->weight_delta);
-            }
-        }
-        layer = layer->next_layer;
-        layerCount++;
-    }
+    net->desired_rmse = desired_rmse;
 }
 
-void ann_dump_train_sets(ANNet* net)
+void ann_set_bit_fail_limit(ANNet* net, annreal bit_fail_limit)
 {
-    int i, j;
-    annreal absoluteError;
-    ANNSet *set;
-    annreal rmse;
+    net->bit_fail_limit = bit_fail_limit;
+}
 
-    for(i=0;i<net->train_sets_count;++i) {
-        rmse = 0;
-        set = net->train_sets[i];
-        ann_run(net, set->input, NULL);
-        for(j=0;j<net->input_layer->neurons_count;++j)
-            printf("%.2f ", set->input[j]);
-        printf("=> ");
-        for(j=0;j<net->output_layer->neurons_count;++j) {
-            absoluteError = net->output_layer->neurons[j]->value - set->output[j];
-            printf("%.2f ", net->output_layer->neurons[j]->value);
-            rmse += absoluteError*absoluteError;
-        }
-        rmse = sqrt(rmse/net->output_layer->neurons_count);
-        printf("[err: %.5f]\n", rmse);
+void ann_set_stop_mode(ANNet* net, ANNStopMode stop_mode)
+{
+    net->stop_mode = stop_mode;
+}
+
+void ann_set_learning_rate(ANNet *net, annreal learning_rate)
+{
+    net->learning_rate = learning_rate;
+}
+
+void ann_set_momentum(ANNet* net, annreal momentum)
+{
+    net->momentum = momentum;
+}
+
+void ann_set_steepness(ANNet* net, annreal steepness)
+{
+    net->steepness = steepness;
+}
+
+void ann_set_activate_function(ANNet* net, ANNActivateFunction func, ANNLayerGroup layer_group)
+{
+    ANNLayer *layer = net->input_layer;
+    while(layer) {
+        if(layer_group == ANN_ALL_LAYERS ||
+          (layer_group == ANN_HIDDEN_LAYERS && layer != net->input_layer && layer != net->output_layer) ||
+          (layer_group == ANN_OUTPUT_LAYER && layer == net->output_layer))
+            layer->activate_func = func;
+        layer = layer->next_layer;
     }
 }

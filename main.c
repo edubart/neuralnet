@@ -28,13 +28,19 @@ void run_ann_benckmark(const char *datasetFilename,
     ann_add_layer(&net, numOutput);
     ann_set_activate_function(&net, hiddenActivateFunction, ANN_HIDDEN_LAYERS);
     ann_set_activate_function(&net, outputActivateFunction, ANN_OUTPUT_LAYER);
-    ann_set_learning_rate(&net, learning_rate, ANN_ALL_LAYERS);
-    ann_set_momentum(&net, momentum, ANN_ALL_LAYERS);
+    ann_set_learning_rate(&net, learning_rate);
+    ann_set_momentum(&net, momentum);
+    ann_set_stop_mode(&net, stop_mode);
+    if(stop_mode == ANN_STOP_NO_BITFAILS)
+        ann_set_bit_fail_limit(&net, stop_param);
+    else if(stop_mode == ANN_STOP_DESIRED_RMSE)
+        ann_set_desired_rmse(&net, stop_param);
+    ann_set_stop_mode(&net, ANN_STOP_NO_BITFAILS);
     ann_load_train_sets(&net, datasetFilename);
 
-    elapsed = ann_get_millis();
-    ann_train(&net, max_train_time, stop_mode, stop_param);
-    elapsed = (ann_get_millis() - elapsed)/1000.0;
+    elapsed = ann_get_seconds();
+    ann_train(&net, max_train_time, 1);
+    elapsed = ann_get_seconds() - elapsed;
 
     printf(">> train completed in %.3f seconds\n\n", elapsed);
 }
