@@ -31,6 +31,7 @@ void run_ann_benckmark(const char *datasetFilename,
     ann_set_learning_rate(&net, learning_rate);
     ann_set_momentum(&net, momentum);
     ann_set_stop_mode(&net, stop_mode);
+    ann_set_training_algorithm(&net, ANN_TRAIN_RPROP);
     if(stop_mode == ANN_STOP_NO_BITFAILS)
         ann_set_bit_fail_limit(&net, stop_param);
     else if(stop_mode == ANN_STOP_DESIRED_RMSE)
@@ -43,10 +44,13 @@ void run_ann_benckmark(const char *datasetFilename,
     elapsed = ann_get_seconds() - elapsed;
 
     printf(">> train completed in %.3f seconds\n\n", elapsed);
+    fflush(stdout);
 }
 
 int main(int argc, char **argv)
 {
+    srand(time(NULL));
+
     run_ann_benckmark("datasets/xor.train",
                       300, ANN_STOP_NO_BITFAILS, 0.035,
                       2, 3, 0, 1,
@@ -67,14 +71,14 @@ int main(int argc, char **argv)
                       0.7, 0.4,
                       ANN_SIGMOID,
                       ANN_SIGMOID);
-
-    /*
+/*
     run_ann_benckmark("datasets/parity8.train",
                       300, ANN_STOP_NO_BITFAILS, 0.1,
-                      8, 16, 0, 1,
+                      8, 8, 0, 1,
                       0.7, 0.8,
                       ANN_SIGMOID,
                       ANN_SIGMOID);
+*/
 
     run_ann_benckmark("datasets/building.train",
                       300, ANN_STOP_NO_BITFAILS, 0.1,
@@ -82,6 +86,5 @@ int main(int argc, char **argv)
                       0.7, 0,
                       ANN_SIGMOID,
                       ANN_SIGMOID);
-    */
     return 0;
 }

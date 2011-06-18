@@ -33,9 +33,17 @@ typedef enum {
     ANN_DONT_STOP
 } ANNStopMode;
 
+typedef enum {
+    ANN_TRAIN_STANDARD_EBP,
+    ANN_TRAIN_RPROP
+} ANNTrainAlgorithm;
+
 struct ANNSynapse {
     annreal weight;
     annreal weight_delta;
+    annreal rprop_weight_slope;
+    annreal rprop_prev_weight_step;
+    annreal rprop_prev_weight_slope;
     ANNNeuron *input_neuron;
     ANNNeuron *output_neuron;
 };
@@ -45,14 +53,17 @@ struct ANNNeuron {
     annreal delta;
     annreal bias;
     annreal bias_delta;
-    ushort input_synapses_count;
-    ushort output_synapses_count;
+    annreal rprop_bias_slope;
+    annreal rprop_prev_bias_slope;
+    annreal rprop_prev_bias_step;
+    ushort input_synapses_num;
+    ushort output_synapses_num;
     ANNSynapse **input_synapses;
     ANNSynapse **output_synapses;
 };
 
 struct ANNLayer {
-    ushort neurons_count;
+    ushort neurons_num;
     ANNActivateFunction activate_func;
     ANNNeuron **neurons;
     ANNLayer *prev_layer;
@@ -65,19 +76,27 @@ struct ANNSet {
 };
 
 struct ANNet {
-    uint train_sets_count;
+    uint train_num_sets;
     uint random_seed;
     uint bit_fails;
     annreal rmse;
     annreal bit_fail_limit;
     annreal desired_rmse;
-    annreal learning_rate;
-    annreal momentum;
     annreal steepness;
     ANNStopMode stop_mode;
     ANNLayer *input_layer;
     ANNLayer *output_layer;
     ANNSet **train_sets;
+
+    ANNTrainAlgorithm train_algorithm;
+
+    annreal learning_rate;
+    annreal momentum;
+
+    annreal rprop_increase_factor;
+    annreal rprop_decrease_factor;
+    annreal rprop_min_step;
+    annreal rprop_max_step;
 };
 
 #ifdef __cplusplus
@@ -86,7 +105,7 @@ extern "C" {
 
 void ann_init(ANNet *net);
 
-void ann_add_layer(ANNet *net, int neurons_count);
+void ann_add_layer(ANNet *net, int neurons_num);
 void ann_add_train_set(ANNet *net, annreal *input, annreal *output);
 int ann_load_train_sets(ANNet *net, const char *filename);
 
@@ -103,6 +122,7 @@ annreal ann_calc_set_rmse(ANNet *net, annreal *input, annreal *output);
 void ann_dump_train_sets(ANNet *net);
 void ann_randomize_weights(ANNet *net, annreal min, annreal max);
 
+void ann_set_training_algorithm(ANNet *net, ANNTrainAlgorithm train_algorithm);
 void ann_set_desired_rmse(ANNet *net, annreal desired_rmse);
 void ann_set_bit_fail_limit(ANNet *net, annreal bit_fail_limit);
 void ann_set_stop_mode(ANNet *net, ANNStopMode stop_mode);
@@ -116,10 +136,13 @@ extern inline annreal ann_random_range(annreal min, annreal max)
 { return (min + (((max-min) * rand())/(RAND_MAX + 1.0))); }
 extern inline annreal ann_convert_range(annreal v, annreal from_min, annreal from_max, annreal to_min, annreal to_max)
 { return ((((v - from_min) / (from_max - from_min)) * (to_max - to_min)) + to_min); }
-extern inline annreal ann_clip(annreal v, annreal min, annreal max)
-{ return ((v < max) ? ((v > min) ? v : min) : max); }
 extern inline annreal ann_get_seconds()
 { struct timeb t; ftime(&t); return (((annreal)t.millitm/1000.0) + (annreal)t.time); }
+
+#define ann_clip(v,min,max) ((v < max) ? ((v > min) ? v : min) : max)
+#define ann_min(a,b) (a < b ? a : b)
+#define ann_max(a,b) (a > b ? a : b)
+#define ann_sign(a) (a > 0 ? 1 : (a < 0 ? -1 : 0))
 
 #ifdef __cplusplus
 };
