@@ -79,7 +79,8 @@ struct ANNet {
     uint train_num_sets;
     uint random_seed;
     uint bit_fails;
-    annreal rmse;
+    annreal mse;
+    annreal prev_mse;
     annreal bit_fail_limit;
     annreal desired_rmse;
     annreal steepness;
@@ -123,6 +124,7 @@ void ann_dump_train_sets(ANNet *net);
 void ann_randomize_weights(ANNet *net, annreal min, annreal max);
 
 void ann_set_training_algorithm(ANNet *net, ANNTrainAlgorithm train_algorithm);
+void ann_set_rprop_params(ANNet *net, annreal increase_factor, annreal decrease_factor, annreal min_step, annreal max_step);
 void ann_set_desired_rmse(ANNet *net, annreal desired_rmse);
 void ann_set_bit_fail_limit(ANNet *net, annreal bit_fail_limit);
 void ann_set_stop_mode(ANNet *net, ANNStopMode stop_mode);
@@ -139,7 +141,7 @@ extern inline annreal ann_convert_range(annreal v, annreal from_min, annreal fro
 extern inline annreal ann_get_seconds()
 { struct timeb t; ftime(&t); return (((annreal)t.millitm/1000.0) + (annreal)t.time); }
 
-#define ann_clip(v,min,max) ((v < max) ? ((v > min) ? v : min) : max)
+#define ann_clip(v,min,max) ((v > max) ? max : ((v < min) ? min : v))
 #define ann_min(a,b) (a < b ? a : b)
 #define ann_max(a,b) (a > b ? a : b)
 #define ann_sign(a) (a > 0 ? 1 : (a < 0 ? -1 : 0))

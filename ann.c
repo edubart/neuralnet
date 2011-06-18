@@ -39,7 +39,7 @@ inline void synapse_init(ANNSynapse *synapse, ANNNeuron *input_neuron, ANNNeuron
     synapse->input_neuron = input_neuron;
     synapse->output_neuron = output_neuron;
 
-    synapse->weight = ann_random_range(-0.1, 0.1);
+    synapse->weight = ann_random_range(-1, 1);
     synapse->weight_delta = 0;
 
     synapse->rprop_weight_slope = 0;
@@ -114,7 +114,7 @@ inline void layer_init(ANNLayer *layer, int neurons_num, ANNLayer *prev_layer)
         neuron_init(layer->neurons[i], layer);
 
         if(prev_layer)
-            layer->neurons[i]->bias = ann_random_range(-0.1, 0.1);
+            layer->neurons[i]->bias = ann_random_range(-1, 1);
     }
 
     /* link with the previous layer */
@@ -126,7 +126,8 @@ void ann_init(ANNet *net)
 {
     net->steepness = 1;
     net->train_num_sets = 0;
-    net->rmse = -1;
+    net->prev_mse = 0;
+    net->mse = 1e100;
     net->desired_rmse = 0;
     net->bit_fail_limit = 0.01;
     net->bit_fails = -1;
@@ -143,7 +144,7 @@ void ann_init(ANNet *net)
 
     net->rprop_increase_factor = 1.2;
     net->rprop_decrease_factor = 0.5;
-    net->rprop_min_step = 1e-6;
+    net->rprop_min_step = 1e-10;
     net->rprop_max_step = 50;
 }
 
@@ -289,11 +290,11 @@ inline void ann_backpropagate_mse(ANNet* net, annreal* desired_output)
                 value = desired_output[i] - neuron->value;
                 delta = -value * derive_activate_function(neuron->value, net->steepness, layer->activate_func);
 
-                /* RPROP automatically calculates RMSE */
+                /* RPROP automatically calculates MSE */
                 if(net->train_algorithm == ANN_TRAIN_RPROP) {
                     if(fabs(value) >= net->bit_fail_limit)
                         net->bit_fails++;
-                    net->rmse += value*value;
+                    net->mse += value*value;
                 }
             }
             /* calculate hidden layers's neurons delta */
@@ -322,27 +323,27 @@ inline void ann_backpropagate_mse(ANNet* net, annreal* desired_output)
 
 void ann_rprop_update_weight(ANNet *net, annreal *slope, annreal *prev_slope, annreal *prev_step, annreal *weight, annreal *weight_delta)
 {
-    annreal slope_sign, step;
+    annreal slope_sign;
 
     slope_sign = (*slope) * (*prev_slope);
 
     if(slope_sign > 0) {
-        step = ann_min((*prev_step) * net->rprop_increase_factor, net->rprop_max_step);
-        *weight_delta = -ann_sign((*slope)) * step;
+        (*prev_step) = ann_min(net->rprop_increase_factor * (*prev_step), net->rprop_max_step);
+        *weight_delta = -ann_sign((*slope)) * (*prev_step);
         *weight += (*weight_delta);
+        *prev_slope = (*slope);
     } else if(slope_sign < 0) {
-        step = ann_max((*prev_step) * net->rprop_decrease_factor, net->rprop_min_step);
-        *weight -= (*weight_delta);
-        *slope = 0;
+        (*prev_step) = ann_max(net->rprop_decrease_factor * (*prev_step), net->rprop_min_step);
+        if(net->prev_mse < net->mse)
+            *weight -= (*weight_delta);
+        *prev_slope = 0;
     } else {
-        step = (*prev_step);
-        *weight_delta = -ann_sign((*slope)) * step;
+        *weight_delta = -ann_sign((*slope)) * (*prev_step);
         *weight += (*weight_delta);
+        *prev_slope = (*slope);
     }
 
-    *prev_slope = (*slope);
     *slope = 0;
-    *prev_step = step;
 }
 
 inline void ann_rprop_update_weights(ANNet *net)
@@ -424,7 +425,8 @@ void ann_train_sets(ANNet *net)
     const uint num_sets = net->train_num_sets;
 
     if(net->train_algorithm == ANN_TRAIN_RPROP) {
-        net->rmse = 0;
+        net->prev_mse = net->mse;
+        net->mse = 0;
         net->bit_fails = 0;
     }
     /* random shuffle train sets*/
@@ -448,11 +450,11 @@ void ann_train_sets(ANNet *net)
     }
 
     if(net->train_algorithm == ANN_TRAIN_RPROP) {
-        net->rmse = sqrt(net->rmse/(net->output_layer->neurons_num * num_sets));
+        net->mse = net->mse/(net->output_layer->neurons_num * num_sets);
 
         /* update only if needed */
         if(!(net->stop_mode == ANN_STOP_NO_BITFAILS && net->bit_fails == 0) &&
-           !(net->stop_mode == ANN_STOP_DESIRED_RMSE && net->rmse < net->desired_rmse))
+           !(net->stop_mode == ANN_STOP_DESIRED_RMSE && sqrt(net->mse) < net->desired_rmse))
             ann_rprop_update_weights(net);
     }
 }
@@ -469,7 +471,7 @@ void ann_train(ANNet *net, annreal max_train_time, annreal report_interval)
     for(epoch=1;;++epoch) {
         time_now = ann_get_seconds();
         if((net->stop_mode == ANN_STOP_NO_BITFAILS && net->bit_fails == 0) ||
-           (net->stop_mode == ANN_STOP_DESIRED_RMSE && net->rmse < net->desired_rmse) ||
+           (net->stop_mode == ANN_STOP_DESIRED_RMSE && sqrt(net->mse) < net->desired_rmse) ||
            (time_now >= stop_time && max_train_time > 0)) {
             break;
         } else if((time_now - last_report_time) >= report_interval) {
@@ -489,14 +491,14 @@ void ann_train(ANNet *net, annreal max_train_time, annreal report_interval)
 
 void ann_report(ANNet* net, uint epoch)
 {
-    printf("Epoch: %10u    Current RMSE: %.10f    Bit fails: %d\n", epoch, net->rmse, net->bit_fails);
+    printf("Epoch: %10u    Current RMSE: %.10f    Bit fails: %d\n", epoch, sqrt(net->mse), net->bit_fails);
     fflush(stdout);
 }
 
 void ann_calc_errors(ANNet* net)
 {
     annreal error;
-    annreal rmse = 0;
+    annreal mse = 0;
     uint bit_fails = 0;
     int i, j;
 
@@ -507,12 +509,12 @@ void ann_calc_errors(ANNet* net)
             error = net->output_layer->neurons[j]->value - net->train_sets[i]->output[j];
             if(fabs(error) >= net->bit_fail_limit)
                 bit_fails++;
-            rmse += error*error;
+            mse += error*error;
         }
     }
-    rmse = sqrt(rmse/(net->train_num_sets * net->output_layer->neurons_num));
+    mse = mse/(net->train_num_sets * net->output_layer->neurons_num);
 
-    net->rmse = rmse;
+    net->mse = mse;
     net->bit_fails = bit_fails;
 }
 
@@ -580,10 +582,17 @@ void ann_randomize_weights(ANNet* net, annreal min, annreal max)
     }
 }
 
-
 void ann_set_training_algorithm(ANNet *net, ANNTrainAlgorithm train_algorithm)
 {
     net->train_algorithm = train_algorithm;
+}
+
+void ann_set_rprop_params(ANNet* net, annreal increase_factor, annreal decrease_factor, annreal min_step, annreal max_step)
+{
+    net->rprop_increase_factor = increase_factor;
+    net->rprop_decrease_factor = decrease_factor;
+    net->rprop_min_step = min_step;
+    net->rprop_max_step = max_step;
 }
 
 void ann_set_desired_rmse(ANNet* net, annreal desired_rmse)
