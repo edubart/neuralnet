@@ -1,7 +1,8 @@
 #include <stdio.h>
-#include "ann.h"
-
+#include <stdlib.h>
 #include <time.h>
+
+#include "ann.h"
 
 void run_ann_benckmark(const char *datasetFilename,
                        annreal max_train_time,
@@ -14,34 +15,36 @@ void run_ann_benckmark(const char *datasetFilename,
                        ANNActivateFunction hiddenActivateFunction,
                        ANNActivateFunction outputActivateFunction)
 {
-    ANNet net;
+    ANNet *net;
     annreal elapsed;
 
     printf(">> training dataset '%s'\n", datasetFilename);
 
-    ann_init(&net);
-    ann_add_layer(&net, numInput);
-    ann_add_layer(&net, numHidden);
-    ann_add_layer(&net, numHidden2);
-    ann_add_layer(&net, numOutput);
-    ann_set_activate_function(&net, hiddenActivateFunction, ANN_HIDDEN_LAYERS);
-    ann_set_activate_function(&net, outputActivateFunction, ANN_OUTPUT_LAYER);
-    ann_set_stop_mode(&net, stop_mode);
-    ann_set_training_algorithm(&net, ANN_TRAIN_RPROP);
-    ann_set_rprop_params(&net, 1.2, 0.5, 1e-6, 50);
+    net = ann_create();
+    ann_add_layer(net, numInput);
+    ann_add_layer(net, numHidden);
+    ann_add_layer(net, numHidden2);
+    ann_add_layer(net, numOutput);
+    ann_set_activate_function(net, hiddenActivateFunction, ANN_HIDDEN_LAYERS);
+    ann_set_activate_function(net, outputActivateFunction, ANN_OUTPUT_LAYER);
+    ann_set_stop_mode(net, stop_mode);
+    ann_set_training_algorithm(net, ANN_TRAIN_RPROP);
+    ann_set_rprop_params(net, 1.2, 0.5, 1e-6, 50);
     if(stop_mode == ANN_STOP_NO_BITFAILS)
-        ann_set_bit_fail_limit(&net, stop_param);
+        ann_set_bit_fail_limit(net, stop_param);
     else if(stop_mode == ANN_STOP_DESIRED_RMSE)
-        ann_set_desired_rmse(&net, stop_param);
-    ann_set_stop_mode(&net, ANN_STOP_NO_BITFAILS);
-    ann_load_train_sets(&net, datasetFilename);
+        ann_set_desired_rmse(net, stop_param);
+    ann_set_stop_mode(net, ANN_STOP_NO_BITFAILS);
+    ann_load_train_sets(net, datasetFilename);
 
     elapsed = ann_get_seconds();
-    ann_train(&net, max_train_time, 0.3);
+    ann_train(net, max_train_time, 0.3);
     elapsed = ann_get_seconds() - elapsed;
 
     printf(">> train completed in %.3f seconds\n\n", elapsed);
     fflush(stdout);
+
+    ann_destroy(net);
 }
 
 int main(int argc, char **argv)
@@ -65,16 +68,11 @@ int main(int argc, char **argv)
                       48, 96, 0, 3,
                       ANN_SIGMOID,
                       ANN_SIGMOID);
+
     run_ann_benckmark("datasets/parity8.train",
                       300, ANN_STOP_NO_BITFAILS, 0.1,
                       8, 16, 0, 1,
-                      ANN_SIGMOID,
+                      ANN_SIGMOID_SYMMETRIC,
                       ANN_LINEAR);
-
-    run_ann_benckmark("datasets/building.train",
-                      300, ANN_STOP_NO_BITFAILS, 0.1,
-                      14, 16, 0, 3,
-                      ANN_SIGMOID,
-                      ANN_SIGMOID);
     return 0;
 }

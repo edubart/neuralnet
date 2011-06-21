@@ -1,11 +1,10 @@
 #ifndef ANN_H
 #define ANN_H
 
-#include <stdlib.h>
-#include <sys/timeb.h>
-
+typedef unsigned char uchar;
 typedef unsigned short ushort;
 typedef unsigned int uint;
+typedef unsigned long ulong;
 typedef double annreal;
 
 typedef struct ANNSynapse ANNSynapse;
@@ -39,35 +38,39 @@ typedef enum {
 } ANNTrainAlgorithm;
 
 struct ANNSynapse {
+    ANNNeuron *input_neuron;
+    ANNNeuron *output_neuron;
     annreal weight;
+
     annreal weight_delta;
+
     annreal rprop_weight_slope;
     annreal rprop_prev_weight_step;
     annreal rprop_prev_weight_slope;
-    ANNNeuron *input_neuron;
-    ANNNeuron *output_neuron;
 };
 
 struct ANNNeuron {
+    ANNSynapse **input_synapses;
+    ANNSynapse **output_synapses;
+    ushort num_input_synapses;
+    ushort num_output_synapses;
     annreal value;
-    annreal delta;
     annreal bias;
+
+    annreal delta;
     annreal bias_delta;
+
     annreal rprop_bias_slope;
     annreal rprop_prev_bias_slope;
     annreal rprop_prev_bias_step;
-    ushort input_synapses_num;
-    ushort output_synapses_num;
-    ANNSynapse **input_synapses;
-    ANNSynapse **output_synapses;
 };
 
 struct ANNLayer {
-    ushort neurons_num;
-    ANNActivateFunction activate_func;
-    ANNNeuron **neurons;
     ANNLayer *prev_layer;
     ANNLayer *next_layer;
+    ANNActivateFunction activate_func;
+    ANNNeuron **neurons;
+    ushort num_neurons;
 };
 
 struct ANNSet {
@@ -76,24 +79,30 @@ struct ANNSet {
 };
 
 struct ANNet {
-    uint train_num_sets;
+    ANNLayer *input_layer;
+    ANNLayer *output_layer;
+
+    ANNSet **train_sets;
+    uint num_train_sets;
+
     uint random_seed;
+
+    ANNStopMode stop_mode;
+    annreal bit_fail_limit;
+    annreal desired_rmse;
     uint bit_fails;
     annreal mse;
     annreal prev_mse;
-    annreal bit_fail_limit;
-    annreal desired_rmse;
+
     annreal steepness;
-    ANNStopMode stop_mode;
-    ANNLayer *input_layer;
-    ANNLayer *output_layer;
-    ANNSet **train_sets;
 
     ANNTrainAlgorithm train_algorithm;
 
+    /* used by backpropagation */
     annreal learning_rate;
     annreal momentum;
 
+    /* used by rprop */
     annreal rprop_increase_factor;
     annreal rprop_decrease_factor;
     annreal rprop_min_step;
@@ -104,9 +113,10 @@ struct ANNet {
 extern "C" {
 #endif
 
-void ann_init(ANNet *net);
+ANNet *ann_create();
+void ann_destroy(ANNet *net);
 
-void ann_add_layer(ANNet *net, int neurons_num);
+void ann_add_layer(ANNet *net, int num_neurons);
 void ann_add_train_set(ANNet *net, annreal *input, annreal *output);
 int ann_load_train_sets(ANNet *net, const char *filename);
 
@@ -134,13 +144,10 @@ void ann_set_steepness(ANNet *net, annreal steepness);
 void ann_set_activate_function(ANNet *net, ANNActivateFunction func, ANNLayerGroup layer_group);
 
 /* utilities */
-extern inline annreal ann_random_range(annreal min, annreal max)
-{ return (min + (((max-min) * rand())/(RAND_MAX + 1.0))); }
-extern inline annreal ann_convert_range(annreal v, annreal from_min, annreal from_max, annreal to_min, annreal to_max)
-{ return ((((v - from_min) / (from_max - from_min)) * (to_max - to_min)) + to_min); }
-extern inline annreal ann_get_seconds()
-{ struct timeb t; ftime(&t); return (((annreal)t.millitm/1000.0) + (annreal)t.time); }
+annreal ann_random_range(annreal min, annreal max);
+annreal ann_get_seconds();
 
+#define ann_convert_range(v, from_min, from_max, to_min, to_max) ((((annreal)(v - from_min) / (annreal)(from_max - from_min)) * (annreal)(to_max - to_min)) + to_min)
 #define ann_clip(v,min,max) ((v > max) ? max : ((v < min) ? min : v))
 #define ann_min(a,b) (a < b ? a : b)
 #define ann_max(a,b) (a > b ? a : b)
