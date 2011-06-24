@@ -148,8 +148,11 @@ ANNet *ann_create()
 
     net->rprop_increase_factor = 1.2;
     net->rprop_decrease_factor = 0.5;
-    net->rprop_min_step = 1e-10;
+    net->rprop_min_step = 1e-6;
     net->rprop_max_step = 50;
+    net->report_function = ann_report;
+
+    srand(time(NULL));
 
     return net;
 }
@@ -528,6 +531,7 @@ void ann_train_sets(ANNet *net)
 void ann_train(ANNet *net, annreal max_train_time, annreal report_interval)
 {
     uint epoch;
+    annreal elapsed;
     annreal last_report_time = 0;
     annreal time_now = 0;
     annreal stop_time = ann_get_seconds() + max_train_time;
@@ -536,12 +540,13 @@ void ann_train(ANNet *net, annreal max_train_time, annreal report_interval)
 
     for(epoch=1;;++epoch) {
         time_now = ann_get_seconds();
+        elapsed = time_now - last_report_time;
         if((net->stop_mode == ANN_STOP_NO_BITFAILS && net->bit_fails == 0) ||
            (net->stop_mode == ANN_STOP_DESIRED_RMSE && sqrt(net->mse) < net->desired_rmse) ||
            (time_now >= stop_time && max_train_time > 0)) {
             break;
         } else if((time_now - last_report_time) >= report_interval) {
-            ann_report(net, epoch);
+            net->report_function(net, epoch, elapsed);
             last_report_time = time_now;
         }
 
@@ -552,10 +557,10 @@ void ann_train(ANNet *net, annreal max_train_time, annreal report_interval)
             ann_calc_errors(net);
     }
 
-    ann_report(net, epoch);
+    net->report_function(net, epoch, elapsed);
 }
 
-void ann_report(ANNet* net, uint epoch)
+void ann_report(ANNet* net, uint epoch, annreal elapsed)
 {
     printf("Epoch: %10u    Current RMSE: %.10f    Bit fails: %d\n", epoch, sqrt(net->mse), net->bit_fails);
     fflush(stdout);
@@ -646,6 +651,11 @@ void ann_randomize_weights(ANNet* net, annreal min, annreal max)
         }
         layer = layer->next_layer;
     }
+}
+
+void ann_set_report_function(ANNet* net, ANNReportFunction report_function)
+{
+    net->report_function = report_function;
 }
 
 void ann_set_training_algorithm(ANNet *net, ANNTrainAlgorithm train_algorithm)

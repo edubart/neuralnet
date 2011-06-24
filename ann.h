@@ -13,6 +13,8 @@ typedef struct ANNLayer ANNLayer;
 typedef struct ANNSet ANNSet;
 typedef struct ANNet ANNet;
 
+typedef void (*ANNReportFunction)(ANNet *, uint, annreal);
+
 typedef enum
 {
     ANN_LINEAR,
@@ -96,6 +98,7 @@ struct ANNet {
 
     annreal steepness;
 
+    ANNReportFunction report_function;
     ANNTrainAlgorithm train_algorithm;
 
     /* used by backpropagation */
@@ -125,7 +128,8 @@ void ann_run(ANNet *net, annreal *input, annreal *output);
 void ann_train_set(ANNet *net, annreal *input, annreal *output);
 void ann_train_sets(ANNet *net);
 void ann_train(ANNet *net, annreal max_train_time, annreal report_interval);
-void ann_report(ANNet *net, uint epoch);
+
+void ann_report(ANNet *net, uint epoch, annreal elapsed);
 
 void ann_calc_errors(ANNet *net);
 annreal ann_calc_set_rmse(ANNet *net, annreal *input, annreal *output);
@@ -133,6 +137,7 @@ annreal ann_calc_set_rmse(ANNet *net, annreal *input, annreal *output);
 void ann_dump_train_sets(ANNet *net);
 void ann_randomize_weights(ANNet *net, annreal min, annreal max);
 
+void ann_set_report_function(ANNet *net, ANNReportFunction report_function);
 void ann_set_training_algorithm(ANNet *net, ANNTrainAlgorithm train_algorithm);
 void ann_set_rprop_params(ANNet *net, annreal increase_factor, annreal decrease_factor, annreal min_step, annreal max_step);
 void ann_set_desired_rmse(ANNet *net, annreal desired_rmse);
@@ -154,6 +159,50 @@ annreal ann_get_seconds();
 #define ann_sign(a) (a > 0 ? 1 : (a < 0 ? -1 : 0))
 
 #ifdef __cplusplus
+};
+#endif
+
+#ifdef __cplusplus
+/* cpp binding */
+class ANNetwork
+{
+public:
+    ANNetwork() { net = ann_create(); }
+    ~ANNetwork() { ann_destroy(net); }
+
+    void addLayer(int numNeurons) { ann_add_layer(net, numNeurons); }
+    void addTrainSet(annreal *input, annreal *output) { ann_add_train_set(net, input, output); }
+    void loadTrainSets(const char *filename) { ann_load_train_sets(net, filename); }
+
+    void run(annreal *input, annreal *output) { ann_run(net, input, output); }
+
+    void trainSet(annreal *input, annreal *output) { ann_train_set(net, input, output); }
+    void trainSets() { ann_train_sets(net); }
+    void train(annreal maxTrainTime = 0, annreal reportInterval = 1) { ann_train(net, maxTrainTime, reportInterval); }
+
+    void report(uint epoch, annreal elapsed) { ann_report(net, epoch, elapsed); }
+
+    void calcErrors() { ann_calc_errors(net); }
+    annreal calcSetRMSE(annreal *input, annreal *output) { return ann_calc_set_rmse(net, input, output); }
+
+    void randomizeWeights(annreal min = -1, annreal max = 1) { ann_randomize_weights(net, min, max); }
+
+    void setReportFunction(ANNReportFunction reportFunction) { ann_set_report_function(net, reportFunction); }
+    void setTrainingAlgorithm(ANNTrainAlgorithm trainAlgorithm) { ann_set_training_algorithm(net, trainAlgorithm); }
+    void setRpropParams(annreal increaseFactor, annreal decreaseFactor, annreal minStep, annreal maxStep) { ann_set_rprop_params(net, increaseFactor, decreaseFactor, minStep, maxStep); }
+    void setDesiredRMSE(annreal desiredRMSE) { ann_set_desired_rmse(net, desiredRMSE); }
+    void setBitFailLimit(annreal bitFailLimit) { ann_set_bit_fail_limit(net, bitFailLimit); }
+    void setStopMode(ANNStopMode stopMode) { ann_set_stop_mode(net, stopMode); }
+    void setLearningRate(annreal learningRate) { ann_set_learning_rate(net, learningRate); }
+    void setMomentum(annreal momentum) { ann_set_momentum(net, momentum); }
+    void setSteepness(annreal steepness) { ann_set_steepness(net, steepness); }
+    void setActivateFunction(ANNActivateFunction func, ANNLayerGroup layerGroup) { ann_set_activate_function(net, func, layerGroup); }
+
+    static annreal randomRange(annreal min, annreal max) { return ann_random_range(min, max); }
+    static annreal getSeconds() { return ann_get_seconds(); }
+
+private:
+    ANNet *net;
 };
 #endif
 
