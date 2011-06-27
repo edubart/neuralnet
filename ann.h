@@ -7,39 +7,44 @@ typedef unsigned int uint;
 typedef unsigned long ulong;
 typedef double annreal;
 
-typedef struct ANNSynapse ANNSynapse;
-typedef struct ANNNeuron ANNNeuron;
-typedef struct ANNLayer ANNLayer;
-typedef struct ANNSet ANNSet;
-typedef struct ANNet ANNet;
+struct ANNSynapse_s;
+struct ANNNeuron_s;
+struct ANNLayer_s;
+struct ANNSet_s;
+struct ANNet_s;
+
+typedef struct ANNSynapse_s ANNSynapse;
+typedef struct ANNNeuron_s ANNNeuron;
+typedef struct ANNLayer_s ANNLayer;
+typedef struct ANNSet_s ANNSet;
+typedef struct ANNet_s ANNet;
 
 typedef void (*ANNReportFunction)(ANNet *, uint, annreal);
 
-typedef enum
-{
+typedef enum ANNActivateFunction_e {
     ANN_LINEAR,
     ANN_SIGMOID,
     ANN_SIGMOID_SYMMETRIC
 } ANNActivateFunction;
 
-typedef enum {
+typedef enum ANNLayerGroup_e {
     ANN_ALL_LAYERS,
     ANN_HIDDEN_LAYERS,
     ANN_OUTPUT_LAYER
 } ANNLayerGroup;
 
-typedef enum {
+typedef enum ANNStopMode_e {
     ANN_STOP_DESIRED_RMSE,
     ANN_STOP_NO_BITFAILS,
     ANN_DONT_STOP
 } ANNStopMode;
 
-typedef enum {
+typedef enum ANNTrainAlgorithm_e {
     ANN_TRAIN_STANDARD_EBP,
     ANN_TRAIN_RPROP
 } ANNTrainAlgorithm;
 
-struct ANNSynapse {
+struct ANNSynapse_s {
     ANNNeuron *input_neuron;
     ANNNeuron *output_neuron;
     annreal weight;
@@ -51,7 +56,7 @@ struct ANNSynapse {
     annreal rprop_prev_weight_slope;
 };
 
-struct ANNNeuron {
+struct ANNNeuron_s {
     ANNSynapse **input_synapses;
     ANNSynapse **output_synapses;
     ushort num_input_synapses;
@@ -67,7 +72,7 @@ struct ANNNeuron {
     annreal rprop_prev_bias_step;
 };
 
-struct ANNLayer {
+struct ANNLayer_s {
     ANNLayer *prev_layer;
     ANNLayer *next_layer;
     ANNActivateFunction activate_func;
@@ -75,12 +80,12 @@ struct ANNLayer {
     ushort num_neurons;
 };
 
-struct ANNSet {
+struct ANNSet_s {
     annreal *input;
     annreal *output;
 };
 
-struct ANNet {
+struct ANNet_s {
     ANNLayer *input_layer;
     ANNLayer *output_layer;
 
