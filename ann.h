@@ -88,6 +88,8 @@ struct ANNSet_s {
 struct ANNet_s {
     ANNLayer *input_layer;
     ANNLayer *output_layer;
+    int num_layers;
+    int layer_max_neurons;
 
     ANNSet **train_sets;
     uint num_train_sets;
@@ -134,6 +136,7 @@ void ann_train_set(ANNet *net, annreal *input, annreal *output);
 void ann_train_sets(ANNet *net);
 void ann_train(ANNet *net, annreal max_train_time, annreal report_interval);
 
+void ann_dump_code(ANNet *net);
 void ann_report(ANNet *net, uint epoch, annreal elapsed);
 
 void ann_calc_errors(ANNet *net);
@@ -185,6 +188,7 @@ public:
     void trainSets() { ann_train_sets(net); }
     void train(annreal maxTrainTime = 0, annreal reportInterval = 1) { ann_train(net, maxTrainTime, reportInterval); }
 
+    void dumpCode() { ann_dump_code(net); }
     void report(uint epoch, annreal elapsed) { ann_report(net, epoch, elapsed); }
 
     void calcErrors() { ann_calc_errors(net); }

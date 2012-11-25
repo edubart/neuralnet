@@ -140,6 +140,8 @@ ANNet *ann_create()
     net->output_layer = NULL;
     net->train_sets = NULL;
     net->random_seed = time(NULL);
+    net->num_layers = 0;
+    net->layer_max_neurons = 0;
 
     net->train_algorithm = ANN_TRAIN_RPROP;
 
@@ -229,6 +231,9 @@ void ann_add_layer(ANNet *net, int num_neurons)
 
     /* last added layer is the output */
     net->output_layer = layer;
+    net->num_layers++;
+    if(num_neurons > net->layer_max_neurons)
+        net->layer_max_neurons = num_neurons;
 }
 
 void ann_add_train_set(ANNet *net, annreal *input, annreal *output)
@@ -277,12 +282,24 @@ int ann_load_train_sets(ANNet *net, const char *filename)
     while(!feof(fp)) {
         /* read inputs */
         for(i=0;i<net->input_layer->num_neurons;++i) {
-            fscanf(fp, "%f ", &tmp);
+            if(fscanf(fp, "%f", &tmp) != 1) {
+                printf("ANN error: failed to read dataset input\n");
+                fclose(fp);
+                free(in);
+                free(out);
+                return 0;
+            }
             in[i] = tmp;
         }
         /* read desired outputs */
         for(i=0;i<net->output_layer->num_neurons;++i) {
-            fscanf(fp, "%f ", &tmp);
+            if(fscanf(fp, "%f", &tmp) != 1) {
+                printf("ANN error: failed to read dataset input\n");
+                fclose(fp);
+                free(in);
+                free(out);
+                return 0;
+            }
             out[i] = tmp;
         }
         /* add the train set */
@@ -558,6 +575,128 @@ void ann_train(ANNet *net, annreal max_train_time, annreal report_interval)
     }
 
     net->report_function(net, epoch, elapsed);
+}
+
+void ann_compact_run(double *input, double *output, unsigned char *netbuffer, int netbuffer_len)
+{
+    FILE *stream;
+    double value;
+    double prev_values[1024], values[1024];
+    int i, j, k, prev_size;
+    struct {
+        unsigned short num_layers;
+        unsigned short max_layer_neurons;
+        double steepness;
+    } mnet;
+    struct {
+        unsigned short num_neurons;
+        unsigned char activate_function;
+    } mlayer;
+    struct { double bias;} mneuron;
+    struct { double weight; } msynapse;
+    if(!netbuffer || !input || !output)
+        return;
+    stream = fmemopen((void*)netbuffer, netbuffer_len, "rb");
+    if(!stream)
+        return;
+    fread(&mnet, 1, sizeof(mnet), stream);
+    fread(&mlayer, 1, sizeof(mlayer), stream);
+    for(i=0;i<mlayer.num_neurons;i++)
+        values[i]=input[i];
+    for(i=1;i<mnet.num_layers;++i) {
+        prev_size = mlayer.num_neurons;
+        for(j=0;j<mlayer.num_neurons;++j)
+            prev_values[j] = values[j];
+        fread(&mlayer, 1, sizeof(mlayer), stream);
+        for(j=0;j<mlayer.num_neurons;++j) {
+            fread(&mneuron, 1, sizeof(mneuron), stream);
+            value = 0;
+            for(k=0;k<prev_size;++k) {
+                fread(&msynapse, 1, sizeof(msynapse), stream);
+                value += prev_values[k]*msynapse.weight;
+            }
+            value = (value + mneuron.bias) * mnet.steepness;
+            if(mlayer.activate_function == 1)
+                value = (1.0 / (1.0 + exp(-value)));
+            else if(mlayer.activate_function == 2)
+                value = (2.0 / (1.0 + exp(-value)) - 1.0);
+            values[j] = value;
+        }
+    }
+    for(i=0;i<mlayer.num_neurons;i++)
+        output[i]=values[i];
+    fclose(stream);
+}
+
+void ann_dump_code(ANNet* net)
+{
+    ANNLayer *layer;
+    int i, j, k, max_size;
+    unsigned char *buffer;
+    FILE *stream;
+    struct {
+        unsigned short num_layers;
+        unsigned short max_layer_neurons;
+        double steepness;
+    } mnet;
+    struct {
+        unsigned short num_neurons;
+        unsigned char activate_function;
+    } mlayer;
+    struct { double bias;} mneuron;
+    struct { double weight; } msynapse;
+
+    max_size = sizeof(mnet) + (sizeof(mlayer) + (sizeof(mneuron)+sizeof(msynapse)*net->layer_max_neurons)*net->layer_max_neurons) * net->num_layers;
+    buffer = malloc(max_size);
+    if(!buffer) {
+        printf("allocation failed\n");
+        return;
+    }
+
+    stream = fmemopen((void*)buffer, max_size, "w");
+    mnet.max_layer_neurons = net->layer_max_neurons;
+    mnet.steepness = net->steepness;
+    mnet.num_layers = net->num_layers;
+    fwrite(&mnet, 1, sizeof(mnet), stream);
+    layer=net->input_layer;
+    mlayer.num_neurons = layer->num_neurons;
+    mlayer.activate_function = 0;
+    fwrite(&mlayer, 1, sizeof(mlayer), stream);
+    for(i=1,layer=layer->next_layer;i<net->num_layers;++i,layer=layer->next_layer) {
+        mlayer.activate_function = layer->activate_func;
+        mlayer.num_neurons = layer->num_neurons;
+        fwrite(&mlayer, 1, sizeof(mlayer), stream);
+        for(j=0;j<layer->num_neurons;++j) {
+            mneuron.bias = layer->neurons[j]->bias;
+            fwrite(&mneuron, 1, sizeof(mneuron), stream);
+            for(k=0;k<layer->prev_layer->num_neurons;++k) {
+                msynapse.weight = layer->neurons[j]->input_synapses[k]->weight;
+                fwrite(&msynapse, 1, sizeof(msynapse), stream);
+            }
+        }
+    }
+    max_size = ftell(stream);
+    fclose(stream);
+
+    printf("unsigned char mnet[] = \n\t\"");
+    for(i=0;i<max_size;++i) {
+        printf("\\x%02X",buffer[i]);
+        if(i > 0 && (i+1)%32 == 0)
+            printf("\"\n\t\"");
+    }
+    free(buffer);
+
+    printf("\";\n");
+    printf("void ann_compact_run(double *input,double *output,unsigned char *netbuffer,int netbuffer_len){\n");
+    printf("FILE *a;double v;double pvs[1024],vs[1024];int i,j,k,p;\n");
+    printf("struct{short nl;short mln;double e;} t;struct{short nn;char a;} ml;struct{double bias;} mn;struct {double w;} ms;\n");
+    printf("if(!netbuffer||!input||!output)return;a=fmemopen((void*)netbuffer,netbuffer_len,\"rb\");if(!a)return;\n");
+    printf("fread(&t,1,sizeof(t),a);fread(&ml,1,sizeof(ml),a);for(i=0;i<ml.nn;i++)vs[i]=input[i];\n");
+    printf("for(i=1;i<t.nl;++i){p=ml.nn;for(j=0;j<ml.nn;++j)pvs[j]=vs[j];fread(&ml,1,sizeof(ml),a);for(j=0;j<ml.nn;++j){\n");
+    printf("fread(&mn,1,sizeof(mn),a);v=0;for(k=0;k<p;++k){fread(&ms,1,sizeof(ms),a);v += pvs[k]*ms.w;}\n");
+    printf("v=(v+mn.bias)*t.e;if(ml.a==1)v=(1.0/(1.0+exp(-v)));else if(ml.a==2)v=(2.0/(1.0+exp(-v))- 1.0);vs[j]=v;}}\n");
+    printf("for(i=0;i<ml.nn;i++)output[i]=vs[i];fclose(a);}\n");
+    fflush(stdout);
 }
 
 void ann_report(ANNet* net, uint epoch, annreal elapsed)

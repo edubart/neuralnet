@@ -27,7 +27,7 @@ void runAnnBenchmark(const char *datasetFilename,
     net.setActivateFunction(outputActivateFunction, ANN_OUTPUT_LAYER);
     net.setStopMode(stopMode);
     net.setTrainingAlgorithm(ANN_TRAIN_RPROP);
-    net.setRpropParams(1.2, 0.5, 1e-6, 50);
+    net.setRpropParams(1.2, 0.5, 1e-8, 50);
     net.setStopMode(stopMode);
     if(stopMode == ANN_STOP_NO_BITFAILS)
         net.setBitFailLimit(stopParam);
@@ -41,6 +41,8 @@ void runAnnBenchmark(const char *datasetFilename,
     elapsed = ANNetwork::getSeconds() - elapsed;
 
     std::cout << ">> train completed in " << elapsed << " seconds" << std::endl << std::endl;
+    std::cout << "generated code: " << std::endl;
+    //net.dumpCode();
 }
 
 int main(int argc, char **argv)
